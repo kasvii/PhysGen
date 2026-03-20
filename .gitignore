@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+eggs/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Training outputs (checkpoints, logs, test results)
+outputs/
+
+# Data (large datasets should not be in the repo)
+data/dataset1/*.npz
+data/drivaernet_plus
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+*.bak
+*.orig
+wandb/
+lightning_logs/

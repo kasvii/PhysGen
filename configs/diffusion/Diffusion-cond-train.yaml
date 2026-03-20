@@ -1,0 +1,145 @@
+model:
+  _target_: condition_diffusion.models.diffusion.flow_matching_sit.Diffuser
+  
+  first_stage_config:
+    _target_: craftsman.models.autoencoders.michelangelo_autoencoder.MichelangeloAutoencoder
+    pretrained_model_name_or_path: "outputs/FinetuneAll/finetuneall_output/ckpts/last.ckpt"
+    embed_dim: 64
+    point_feats: 3
+    out_dim: 1 
+    embed_type: "fourier"
+    num_freqs: 8
+    include_pi: false
+    heads: 12
+    width: 768
+    num_encoder_layers: 8
+    num_decoder_layers: 16
+    use_ln_post: true
+    init_scale: 0.25
+    qkv_bias: false
+    use_flash: true
+    use_checkpoint: true
+    use_downsample: true
+    num_latents: 2048
+  
+  first_stage_key: "coarse_surface" 
+  
+  cond_stage_config:
+    _target_: condition_diffusion.models.conditioner.DinoImageEncoder
+    version: "facebook/dinov2-base"
+    use_cls_token: false
+    image_size: 224
+  overfitting_debug: false
+  cond_stage_key: "condition_image"
+  
+  denoiser_cfg:
+    _target_: condition_diffusion.models.denoisers.hunyuandit.HunYuanDiTPlain
+    input_size: 2048
+    in_channels: 64
+    hidden_size: 768
+    context_dim: 768
+    depth: 12
+    num_heads: 8
+    mlp_ratio: 4.0
+    norm_type: 'layer'
+    qk_norm_type: 'rms'
+    qk_norm: true
+    text_len: 256
+    with_decoupled_ca: true
+    use_pos_emb: false
+    use_attention_pooling: true
+    qkv_bias: true
+    num_moe_layers: 3
+    num_experts: 4
+    moe_top_k: 2
+    
+  scheduler_cfg:
+    transport:
+      _target_: condition_diffusion.models.diffusion.transport.create_transport
+      path_type: 'Linear'
+      prediction: 'velocity'
+      loss_weight: 1.0
+      train_eps: 0.001
+      sample_eps: 0.001
+    sampler:
+      _target_: condition_diffusion.models.diffusion.transport.Sampler
+      params: {}
+      ode_params:
+        sampling_method: euler
+        num_steps: &num_steps 50
+        
+  ema_config:
+    ema_model: "LitEma"
+    ema_decay: 0.9999
+    ema_inference: true
+    
+  optimizer_cfg:
+    optimizer:
+      _target_: torch.optim.AdamW
+      lr: 1.e-4
+      betas: [0.9, 0.999]
+      eps: 1.e-6
+      weight_decay: 0.01
+    scheduler:
+      _target_: condition_diffusion.utils.trainings.lr_scheduler.LambdaWarmUpCosineFactorScheduler
+      warm_up_steps: 500
+      f_start: 1.e-6
+      f_min: 1e-3
+      f_max: 1.0
+      
+  pipeline_cfg:
+    _target_: condition_diffusion.pipelines.Hunyuan3DDiTFlowMatchingPipeline
+    
+  image_processor_cfg:
+    _target_: condition_diffusion.models.conditioner.DinoImageEncoder
+    version: "facebook/dinov2-base"
+    use_cls_token: false
+    image_size: 224
+      
+  z_scale_factor: &z_scale_factor 1.0039506158752403
+  scale_by_std: false
+  torch_compile: false
+
+dataset:
+  _target_: condition_diffusion.dataset.DrivarNetPlusDataModule
+  params:
+    pressure_path: "data/drivaernet_plus/pressure/PressureVTK"
+    condition_path: "data/drivaernet_plus/condition"
+    condition_type: "matched_sketches-CLIPasso"
+    subset_dir: "train_val_test_splits"
+    cache_dir: "data/drivaernet_plus/pressure/physdec_data"
+    
+    root_dir: "./data/dataset1"
+    data_type: "sdf"
+    
+    num_points: 40000
+    preprocess: true
+    
+    batch_size: 24
+    num_workers: 8
+    
+    rotate_points: false
+    add_noise: true
+    
+    load_supervision: false
+    
+    vis_mesh: true
+    small: false
+
+training:
+  output_dir: "outputs/Diffusion-Conditional/train_condiff_CLIPasso"
+  monitor: "val/total_loss"
+  every_n_train_steps: 10000
+  log_every_n_steps: 50
+  val_check_interval: 10000
+  limit_val_batches: 32
+  steps: 100000
+  base_lr: 1.e-4
+  use_amp: false
+  amp_type: "bf16"
+  force_fp32: true
+  update_every: 1
+  num_nodes: 1
+  ckpt_path: ""
+  gradient_clip_val: 1.0
+  gradient_clip_algorithm: "norm"

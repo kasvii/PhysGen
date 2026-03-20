@@ -1,0 +1,230 @@
+model:
+  _target_: uncond_diffusion.models.diffusion.flow_matching_loop_givenshape.Diffuser
+
+  first_stage_config:
+    _target_: craftsman.models.autoencoders.michelangelo_autoencoder.MichelangeloAutoencoder
+    pretrained_model_name_or_path: "outputs/FinetuneAll/finetuneall_output/ckpts/last.ckpt"
+    embed_dim: 64
+    point_feats: 3
+    out_dim: 1
+    embed_type: "fourier"
+    num_freqs: 8
+    include_pi: false
+    heads: 12
+    width: 768
+    num_encoder_layers: 8
+    num_decoder_layers: 16
+    use_ln_post: true
+    init_scale: 0.25
+    qkv_bias: false
+    use_flash: true
+    use_checkpoint: true
+    use_downsample: true
+    num_latents: 2048
+
+  first_stage_key: "coarse_surface"
+
+  physics_decoder_config:
+    enabled: true
+    pretrained_model_name_or_path: "outputs/FinetuneAll/finetuneall_output/ckpts/last.ckpt"
+    sample_posterior: true
+    embed_dim: 64
+    point_feats: 3
+    out_dim: 1
+    embed_type: "fourier"
+    num_freqs: 8
+    include_pi: false
+    heads: 12
+    width: 768
+    num_latents: 256
+    num_encoder_layers: 8
+    num_decoder_layers: 3
+    use_ln_post: true
+    init_scale: 0.25
+    qkv_bias: true
+    use_flash: true
+    use_checkpoint: true
+    use_downsample: true
+    PRESSURE_MEAN: -94.5
+    PRESSURE_STD: 117.25
+    vis_mesh: false
+
+  drag_decoder_config:
+    enabled: true
+    pretrained_model_name_or_path: "outputs/FinetuneAll/finetuneall_output/ckpts/last.ckpt"
+    sample_posterior: false
+    embed_dim: 64
+    point_feats: 3
+    out_dim: 1
+    embed_type: "fourier"
+    num_freqs: 8
+    include_pi: false
+    heads: 12
+    width: 768
+    num_latents: 256
+    num_encoder_layers: 8
+    num_decoder_layers: 3
+    use_ln_post: true
+    init_scale: 0.25
+    qkv_bias: false
+    use_flash: true
+    use_checkpoint: true
+    use_downsample: true
+    DRAG_MEAN: 0.0
+    DRAG_STD: 1.0
+    vis_mesh: false
+
+  noisy_drag_decoder_config:
+    enabled: true
+    pretrained_model_name_or_path: "outputs/FinetuneAll/finetuneall_output/ckpts/last.ckpt"
+    sample_posterior: false
+    embed_dim: 64
+    point_feats: 3
+    out_dim: 1
+    embed_type: "fourier"
+    num_freqs: 8
+    include_pi: false
+    heads: 12
+    width: 768
+    num_latents: 256
+    num_encoder_layers: 8
+    num_decoder_layers: 3
+    use_ln_post: true
+    init_scale: 0.25
+    qkv_bias: false
+    use_flash: true
+    use_checkpoint: false
+    use_downsample: true
+    DRAG_MEAN: 0.0
+    DRAG_STD: 1.0
+    vis_mesh: false
+
+  denoiser_cfg:
+    _target_: uncond_diffusion.models.denoisers.hunyuandit.HunYuanDiTPlain
+    input_size: 2048
+    in_channels: 64
+    hidden_size: 768
+    context_dim: 768
+    depth: 6
+    num_heads: 8
+    mlp_ratio: 4.0
+    norm_type: "layer"
+    qk_norm_type: "rms"
+    qk_norm: true
+    text_len: 1
+    with_decoupled_ca: false
+    use_pos_emb: false
+    use_attention_pooling: false
+    qkv_bias: true
+    num_moe_layers: 3
+    num_experts: 4
+    moe_top_k: 2
+
+  test_config:
+    save_dir: "outputs/Diffusion-Unconditional/test_uncond_givenshape_optimization"
+    num_batches: 3
+    meshes_per_batch: 4
+    resolution: 512
+    save_intermediate: true
+    seed: 42
+    use_drag_guidance: true
+    drag_guidance_scale: 0.03
+    target_drag: 0.19
+    start_time_step: 0.75
+    num_inference_steps: 100
+    num_optimization_loops: 20
+    num_optimization_steps: 20
+    learning_rate: 0.001
+    angle_threshold: 10.0
+
+  overfitting_debug: false
+  cond_stage_key: "null"
+
+  scheduler_cfg:
+    transport:
+      _target_: uncond_diffusion.models.diffusion.transport.create_transport
+      path_type: "Linear"
+      prediction: "velocity"
+      loss_weight: 1.0
+      train_eps: 0.001
+      sample_eps: 0.001
+    sampler:
+      _target_: uncond_diffusion.models.diffusion.transport.Sampler
+      params: {}
+      ode_params:
+        sampling_method: euler
+        num_steps: &num_steps 50
+
+  ema_config:
+    ema_model: "LitEma"
+    ema_decay: 0.9999
+    ema_inference: true
+
+  optimizer_cfg:
+    optimizer:
+      _target_: torch.optim.AdamW
+      lr: 1.e-4
+      betas: [0.9, 0.999]
+      eps: 1.e-6
+      weight_decay: 0.01
+    scheduler:
+      _target_: uncond_diffusion.utils.trainings.lr_scheduler.LambdaWarmUpCosineFactorScheduler
+      warm_up_steps: 500
+      f_start: 1.e-6
+      f_min: 1e-3
+      f_max: 1.0
+
+  pipeline_cfg:
+    _target_: uncond_diffusion.pipelines_loop_givenshape.Hunyuan3DDiTFlowMatchingGuidanceLoopPipeline
+
+  image_processor_cfg: null
+
+  z_scale_factor: &z_scale_factor 1.0039506158752403
+  scale_by_std: false
+  torch_compile: false
+
+  ckpt_path: "outputs/Diffusion-Unconditional/uncond_diff_output/ckpts/last.ckpt"
+
+dataset:
+  _target_: uncond_diffusion.dataset.DrivarNetPlusDataModule
+  params:
+    pressure_path: "data/drivaernet_plus/pressure/PressureVTK"
+    subset_dir: "train_val_test_splits"
+    cache_dir: "data/drivaernet_plus/pressure/physdec_data"
+    root_dir: "./data/dataset1"
+    data_type: "sdf"
+    num_points: 40000
+    preprocess: true
+    batch_size: 4
+    num_workers: 2
+    rotate_points: false
+    add_noise: false
+    load_supervision: false
+    vis_mesh: true
+    small: false
+
+training:
+  output_dir: "outputs/Diffusion-Unconditional/test_uncond_givenshape_optimization/gen_mesh"
+  monitor: "val/total_loss"
+  every_n_train_steps: 10000
+  log_every_n_steps: 50
+  val_check_interval: 500
+  limit_val_batches: 4
+  steps: 500000
+  base_lr: 1.e-4
+  use_amp: false
+  amp_type: "bf16"
+  force_fp32: true
+  update_every: 1
+  num_nodes: 1
+  ckpt_path: ""
+  gradient_clip_val: 1.0
+  gradient_clip_algorithm: "norm"
+
+test:
+  num_batches: 3
+  meshes_per_batch: 4
+  resolution: 512
+  save_dir: "outputs/Diffusion-Unconditional/test_uncond_givenshape_optimization"
+  save_intermediate: true
+  seed: 42

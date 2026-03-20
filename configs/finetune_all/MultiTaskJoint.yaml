@@ -1,0 +1,157 @@
+exp_root_dir: "outputs"
+name: "FinetuneAll"
+tag: "finetune_all_train"
+seed: 0
+
+data_type: "multitask-datamodule"
+data:
+  shape_root_dir: "./data/dataset1"
+  
+  pressure_path: "data/drivaernet_plus/pressure/PressureVTK"
+  physics_cache_dir: "data/drivaernet_plus/pressure/physdec_data"
+  num_pressure_points: 40000
+  
+  drag_data_root: "data/drivaernet_plus/surfaces"
+  csv_path: "data/drivaernet_plus/drag/DrivAerNetPlusPlus_Cd_8k_Updated.csv"
+  
+  subset_dir: "train_val_test_splits"
+  data_type: "sdf"
+  
+  load_supervision: True
+  supervision_type: "tsdf"
+  n_supervision: [21384, 10000, 10000]
+  
+  rotate_points: False
+  add_noise: True
+  
+  batch_size: 24
+  num_workers: 16
+  
+  task_weights:
+    shape: 1
+    physics: 0.01
+    drag: 1
+  
+  small: False
+  preprocess: True
+
+system_type: "comprehensive-multi-task-system"
+system:
+  current_task: "joint"
+  sample_posterior: true
+  
+  shape_model_ckpt: "outputs/ShapeVAE/shapevae_output/ckpts/last.ckpt"
+  physics_model_ckpt: "outputs/PhysDec/physdec_output/ckpts/last.ckpt" 
+  drag_model_ckpt: "outputs/DragDec/dragdec_output/ckpts/last.ckpt"
+  
+  shape_model_type: "michelangelo-autoencoder"
+  shape_model:
+    pretrained_model_name_or_path: ${system.shape_model_ckpt}
+    embed_dim: 64
+    point_feats: 3
+    out_dim: 1 
+    embed_type: "fourier"
+    num_freqs: 8
+    include_pi: false
+    heads: 12
+    width: 768
+    num_encoder_layers: 8
+    num_decoder_layers: 16
+    use_ln_post: true
+    init_scale: 0.25
+    qkv_bias: false
+    use_flash: true
+    use_checkpoint: true
+    use_downsample: true
+  
+  phys_model:
+    sample_posterior: true
+    pretrained_model_name_or_path: ${system.physics_model_ckpt}
+    embed_dim: 64
+    point_feats: 3
+    out_dim: 1 
+    embed_type: "fourier"
+    num_freqs: 8
+    include_pi: false
+    heads: 12
+    width: 768
+    num_latents: 256
+    num_encoder_layers: 8
+    num_decoder_layers: 3
+    use_ln_post: true
+    init_scale: 0.25
+    qkv_bias: true
+    use_flash: true
+    use_checkpoint: true
+    use_downsample: true
+  
+  drag_model:
+    sample_posterior: true
+    pretrained_model_name_or_path: ${system.drag_model_ckpt}
+    embed_dim: 64
+    point_feats: 3
+    out_dim: 1 
+    embed_type: "fourier"
+    num_freqs: 8
+    include_pi: false
+    heads: 12
+    width: 768
+    num_latents: 256
+    num_encoder_layers: 8
+    num_decoder_layers: 3
+    use_ln_post: true
+    init_scale: 0.25
+    qkv_bias: false
+    use_flash: true
+    use_checkpoint: true
+    use_downsample: true
+    DRAG_MEAN: 0.0
+    DRAG_STD: 1.0
+  
+  loss_weights:
+    shape_coarse: 10
+    shape_sharp: 5
+    shape_kl: 0.001
+    physics_mse: 0.1
+    physics_mae: 0.03
+    physics_rel: 0.001
+    drag_mse: 30.0
+    drag_mae: 0.6
+  
+  freeze_encoder: false
+  freeze_shape_decoder: false
+
+  optimizer:
+    name: AdamW
+    args:
+      lr: 1.0e-5
+      betas: [0.9, 0.999]
+      eps: 1.0e-8
+      weight_decay: 1.0e-6
+
+  scheduler:
+    name: CosineAnnealingLR
+    interval: epoch
+    frequency: 1
+    args:
+      T_max: 500
+      eta_min: 1.0e-7
+
+trainer:
+  max_epochs: 500
+  accelerator: gpu
+  devices: auto
+  strategy: ddp_find_unused_parameters_true
+  precision: 16-mixed
+  gradient_clip_val: 1.0
+  accumulate_grad_batches: 4
+  check_val_every_n_epoch: 10
+  log_every_n_steps: 50
+  enable_model_summary: false
+  
+checkpoint:
+  save_last: true
+  save_top_k: -1
+  every_n_epochs: 100
+  monitor: "val/loss"
+  mode: "min"

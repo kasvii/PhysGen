@@ -1,0 +1,101 @@
+exp_root_dir: "outputs"
+name: "PhysDec"
+tag: "physdec_train"
+seed: 0
+
+system:
+  sample_posterior: true
+  shape_model_type: "michelangelo-autoencoder"
+  shape_model_ckpt: ./outputs/ShapeVAE/shapevae_output/ckpts/last.ckpt
+  shape_model:
+    pretrained_model_name_or_path: ./outputs/ShapeVAE/shapevae_output/ckpts/last.ckpt
+    embed_dim: 64
+    point_feats: 3
+    out_dim: 1 
+    embed_type: "fourier"
+    num_freqs: 8
+    include_pi: false
+    heads: 12
+    width: 768
+    num_encoder_layers: 8
+    num_decoder_layers: 16
+    use_ln_post: true
+    init_scale: 0.25
+    qkv_bias: false
+    use_flash: true
+    use_checkpoint: true
+    use_downsample: true
+
+  phys_model:
+    pretrained_model_name_or_path: ""
+    sample_posterior: true
+    embed_dim: 64
+    point_feats: 3
+    out_dim: 1 
+    embed_type: "fourier"
+    num_freqs: 8
+    include_pi: false
+    heads: 12
+    width: 768
+    num_latents: 256
+    num_encoder_layers: 8
+    num_decoder_layers: 3
+    use_ln_post: true
+    init_scale: 0.25
+    qkv_bias: true
+    use_flash: true
+    use_checkpoint: true
+    use_downsample: true
+
+    PRESSURE_MEAN: -94.5
+    PRESSURE_STD: 117.25
+  
+    optimizer:
+      name: AdamW
+      args:
+        lr: 1.e-3
+        betas: [0.9, 0.99]
+        eps: 1.e-6
+
+    scheduler:
+      name: CosineAnnealingLR
+      args:
+        T_max: 1500
+        eta_min: 1e-5
+
+data_type: "drivarnetplus-datamodule"
+data:
+  pressure_path: "data/drivaernet_plus/pressure/PressureVTK"
+  subset_dir: "train_val_test_splits"
+  cache_dir: "data/drivaernet_plus/pressure/physdec_data"
+  num_points: 40000
+  preprocess: True
+  add_noise: True
+  rotate_points: False
+  test_obj_path: "data/drivaernet_plus/meshes/remesh"
+
+  root_dir: "./data/dataset1"
+  data_type: "sdf" 
+  
+  load_supervision: False
+  n_supervision: [21384,10000,10000]
+
+  batch_size: 45
+  num_workers: 11
+
+  vis_mesh: True
+  small: False
+
+trainer:
+  num_nodes: 1
+  max_epochs: 1500
+  log_every_n_steps: 5
+  num_sanity_val_steps: 1
+  check_val_every_n_epoch: 1
+  enable_progress_bar: true
+  precision: 16-mixed
+
+checkpoint:
+  save_last: true
+  save_top_k: -1
+  every_n_train_steps: 10000
