@@ -21,6 +21,8 @@ snapshot_download(
         "outputs/ShapeVAE/*",
         "outputs/FinetuneAll/*",
         "outputs/Dora-VAE-1.1/*",
+        "outputs/Diffusion-Unconditional/*",
+        "outputs/Diffusion-Conditional/*"
     ],
     local_dir_use_symlinks=False,
 )
