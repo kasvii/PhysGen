@@ -121,6 +121,12 @@ system:
   freeze_encoder: false
   freeze_shape_decoder: false
 
+  # Visualization of test samples (stratified over car categories) -> <trial_dir>/vis/
+  # Override with --vis_num_samples / --vis_uids / --vis_only in launch_finetuneall.py.
+  vis_num_samples: 10
+  vis_seed: 0
+  vis_octree_depth: 9
+
   optimizer:
     name: AdamW
     args:

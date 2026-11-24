@@ -110,6 +110,9 @@ class MultiTaskDataModuleConfig:
     small: bool = False
     preprocess: bool = True
 
+    # If non-empty, the test split is restricted to these uids (launch_finetuneall.py --vis_only).
+    test_uids: List[str] = field(default_factory=list)
+
 class MultiTaskDataset(Dataset):
     """Multi-task dataset combining shape, physics, and drag data."""
 
@@ -140,6 +143,10 @@ class MultiTaskDataset(Dataset):
 
         if self.split == 'val':
             self.uids = self.uids[:3]
+
+        if self.split == 'test' and self.cfg.test_uids:
+            keep = set(self.cfg.test_uids)
+            self.uids = [u for u in self.uids if os.path.basename(u).replace('.npz', '') in keep]
 
     def _load_drag_data(self):
         """Load drag coefficient CSV data."""

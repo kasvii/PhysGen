@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.optim
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 import numpy as np
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 import pytorch_lightning as pl
 from omegaconf import OmegaConf
@@ -51,6 +51,16 @@ class ComprehensiveMultiTaskSystem(BaseSystem):
 
         freeze_encoder: bool = False
         freeze_shape_decoder: bool = False
+
+        # Test-time visualization (see launch_finetuneall.py --test). The launcher picks
+        # `vis_num_samples` test uids stratified over car categories (or uses `vis_uids`),
+        # and test_step saves mesh + pressure (.vtp), metrics and a PNG for each of them.
+        vis_num_samples: int = 0
+        vis_seed: int = 0
+        vis_uids: List[str] = field(default_factory=list)
+        vis_dir: str = ""
+        vis_pressure_dir: str = ""      # PressureVTK dir, provides the GT surface triangles
+        vis_octree_depth: int = 9       # resolution of the reconstructed mesh (2^depth grid)
 
     cfg: Config
 
@@ -597,7 +607,64 @@ class ComprehensiveMultiTaskSystem(BaseSystem):
         if self.cfg.current_task in ["drag", "joint"]:
             self._log_drag_test_metrics(out, batch)
 
+        if self.cfg.vis_uids and self.cfg.current_task == "joint":
+            self._save_test_visualizations(batch, out)
+
         return out
+
+    @torch.no_grad()
+    def _save_test_visualizations(self, batch, out):
+        """Save mesh + pressure (.vtp), metrics and a PNG for the selected test samples."""
+        import traceback
+        from finetune_all.visualization import save_test_visualization
+        from multitask_dataset import PRESSURE_MEAN, PRESSURE_STD
+
+        selected = set(self.cfg.vis_uids)
+        for i, uid in enumerate(batch["uid"]):
+            if uid not in selected:
+                continue
+            try:
+                to_np = lambda t: t.detach().float().reshape(-1).cpu().numpy()
+                denorm = lambda t: to_np(t) * PRESSURE_STD + PRESSURE_MEAN
+
+                # Reconstructed shape: iso-surface of the shape decoder.
+                mesh_v_f, has_surface = self.shape_model.extract_geometry_by_diffdmc(
+                    out["latents"][i:i + 1], octree_depth=self.cfg.vis_octree_depth, num_chunks=50000)
+                pred_verts = pred_faces = pred_p_mesh = None
+                if has_surface[0]:
+                    verts, faces = mesh_v_f[0]
+                    # Pressure decoder queried on the reconstructed surface (same latent as the test metrics).
+                    phys_latents = self.physics_model.decode(out["kl_embed"][i:i + 1])
+                    p = [self.physics_model.query(verts[s:s + 200000].unsqueeze(0).float(), phys_latents)
+                         for s in range(0, verts.shape[0], 200000)]
+                    pred_verts = verts.detach().float().cpu().numpy()
+                    pred_faces = faces.detach().long().cpu().numpy()
+                    pred_p_mesh = denorm(torch.cat(p, dim=1))
+                else:
+                    print(f"[vis] {uid}: no surface extracted, saving GT/error rows only")
+
+                iou = None
+                if "overall_logits" in out:
+                    pred_occ = out["overall_logits"][i] >= 0
+                    gt_occ = out["overall_target"][i] >= 0
+                    iou = ((pred_occ & gt_occ).sum() / (pred_occ | gt_occ).sum().clamp(min=1)).item()
+
+                metrics = save_test_visualization(
+                    out_dir=self.cfg.vis_dir, uid=uid,
+                    gt_vtk_path=os.path.join(self.cfg.vis_pressure_dir, f"{uid}.vtk"),
+                    gt_points=batch["query_points"][i].detach().float().cpu().numpy(),
+                    gt_pressure=denorm(batch["pressure"][i]),
+                    pred_pressure_on_gt=denorm(out["physics_pred"][i]),
+                    pred_verts=pred_verts, pred_faces=pred_faces, pred_pressure_on_pred=pred_p_mesh,
+                    cd_gt=to_np(out["drag_target"][i])[0] if "drag_target" in out else None,
+                    cd_pred=to_np(out["drag_pred"][i])[0] if "drag_pred" in out else None,
+                    shape_iou=iou,
+                )
+                print(f"[vis] saved {uid}: Cd {metrics['cd_gt']:.4f} -> {metrics['cd_pred']:.4f}, "
+                      f"pressure rel-L2 {metrics['pressure_rel_l2']:.3f}")
+            except Exception as e:  # visualization must never break the test run
+                print(f"[vis] failed for {uid}: {e}")
+                traceback.print_exc()
 
     def on_test_epoch_end(self):
         pass

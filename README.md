@@ -147,6 +147,30 @@ bash commands/train_totalvae_single_node.sh
 bash commands/test_totalvae_single_node.sh
 ```
 
+#### Visualization
+
+Testing also visualizes 10 test samples, stratified over the 8 car categories
+(`vis_num_samples` in `configs/finetune_all/MultiTaskTest.yaml`). For each sample it writes to
+`outputs/FinetuneAll/test@<timestamp>/vis/`:
+
+- `<uid>.png`: the grey mesh and the surface pressure from five views, for the ground truth (CFD surface),
+  the prediction (reconstructed shape + predicted pressure) and the absolute pressure error;
+- `<uid>/gt_surface_pressure.vtp` (`p_gt`, `p_pred`, `abs_err`) and `<uid>/pred_shape_pressure.vtp` (`p_pred`), viewable in ParaView;
+- `<uid>/metrics.json` and `summary.csv` (Cd, pressure MAE / relative L2, shape IoU).
+
+```bash
+# visualize only (skip the metrics on the rest of the test set)
+python launch_finetuneall.py --config configs/finetune_all/MultiTaskTest.yaml --task joint --gpu 0 --test --vis_only
+# choose the samples yourself
+python launch_finetuneall.py --config configs/finetune_all/MultiTaskTest.yaml --task joint --gpu 0 --test --vis_uids N_S_WWS_WM_172,F_D_WM_WW_3523
+```
+
+To inspect dataset samples in the same format (ground-truth pressure only; CPU, needs `pressure/PressureVTK`):
+
+```bash
+python vis_dataset_sample.py --uid N_S_WWS_WM_172 F_D_WM_WW_3523 --out_dir outputs/vis_dataset
+```
+
 ---
 
 ## Physics-Guided Shape Generation

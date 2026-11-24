@@ -55,6 +55,41 @@ def update_config_for_task(cfg, task):
     return cfg
 
 
+def setup_test_visualization(cfg, args):
+    """Pick the test samples to visualize (stratified over car categories unless uids are given)
+    and tell the system / datamodule where to find the GT surfaces and where to save outputs."""
+    import json
+    from omegaconf import open_dict
+    from finetune_all.visualization import select_vis_uids, uid_category, uid_from_path
+
+    num = args.vis_num_samples if args.vis_num_samples is not None else cfg.system.get("vis_num_samples", 0)
+    explicit = args.vis_uids.split(",") if args.vis_uids else list(cfg.system.get("vis_uids", []))
+    explicit = [uid_from_path(u.strip()) for u in explicit if u.strip()]
+    if num <= 0 and not explicit:
+        return
+
+    with open(os.path.join(cfg.data.shape_root_dir, "test.json")) as f:
+        test_uids = [uid_from_path(p) for p in json.load(f)]
+    selected = explicit or select_vis_uids(test_uids, num, seed=cfg.system.get("vis_seed", 0))
+    missing = sorted(set(selected) - set(test_uids))
+    if missing:
+        print(f"[vis] warning: not in the test split, will not be visualized: {missing}")
+
+    vis_dir = cfg.system.get("vis_dir") or os.path.join(cfg.trial_dir, "vis")
+    os.makedirs(vis_dir, exist_ok=True)
+    with open_dict(cfg):
+        cfg.system.vis_uids = selected
+        cfg.system.vis_dir = vis_dir
+        cfg.system.vis_pressure_dir = cfg.system.get("vis_pressure_dir") or cfg.data.pressure_path
+        if args.vis_only:
+            cfg.data.test_uids = selected
+    with open(os.path.join(vis_dir, "selected_uids.json"), "w") as f:
+        json.dump([{"uid": u, "category": uid_category(u)} for u in selected], f, indent=2)
+    print(f"[vis] {len(selected)} test samples -> {vis_dir}")
+    for u in selected:
+        print(f"[vis]   {u}")
+
+
 def train_single_task(cfg, task, config_path, resume_from=None, test_mode=False):
     """Train a single task"""
     print(f"\n{'='*50}")
@@ -192,7 +227,14 @@ def main():
                        help="Task to run: 'joint' for direct multi-task training, 'sequential' for joint training (skips individual tasks), or single task name")
     parser.add_argument("--resume", type=str, default=None, help="Resume from checkpoint")
     parser.add_argument("--test", action="store_true", help="Run in test/validation mode")
-    
+    parser.add_argument("--vis_num_samples", type=int, default=None,
+                        help="[test] number of test samples to visualize, stratified over car categories "
+                             "(default: system.vis_num_samples in the config; 0 disables)")
+    parser.add_argument("--vis_uids", type=str, default=None,
+                        help="[test] comma-separated uids to visualize instead of sampling")
+    parser.add_argument("--vis_only", action="store_true",
+                        help="[test] only run the test on the visualized samples")
+
     args = parser.parse_args()
     
     if args.gpu != "auto":
@@ -207,6 +249,8 @@ def main():
         cfg = base_cfg.copy()
         if args.task == "sequential":
             args.task = "joint"
+        if args.task == "joint":
+            setup_test_visualization(cfg, args)
         train_single_task(cfg, args.task, args.config, args.resume, test_mode=True)
         
     elif args.task == "sequential":
