@@ -98,6 +98,22 @@ Download **DrivAerNet++: Sketches / sketches-CLIPasso.zip** and extract it into:
 ./data/drivaernet_plus/condition/matched_sketches-CLIPasso
 ```
 
+#### Visualize a sample
+To check a sample, render its mesh and ground-truth surface pressure by its id
+(`<body>_<underbody>_..._<number>`, e.g. `N_S_WWS_WM_172`; body E/F/N = estateback/fastback/notchback,
+underbody S/D = smooth/detailed):
+
+```bash
+python vis_dataset_sample.py --uid N_S_WWS_WM_172 F_D_WM_WW_3523
+# or: bash commands/vis_dataset_sample.sh N_S_WWS_WM_172 F_D_WM_WW_3523
+```
+
+This writes `outputs/vis_dataset/<uid>.png`: the grey mesh plus the surface pressure (jet colormap,
+`[-500, 400]` m²/s², change with `--pressure_range`) seen from front 3/4, side, rear 3/4, top and bottom,
+with the drag coefficient and the split in the title. It reads only `pressure/PressureVTK/<uid>.vtk`
+and the drag CSV, and runs on CPU (numpy, scipy, matplotlib, vtk; no GPU or display needed).
+Options: `--data_root`, `--out_dir`, `--px_per_unit` (image resolution).
+
 ---
 
 ## Shape-Physics Variational Autoencoder (SP-VAE)
@@ -147,28 +163,28 @@ bash commands/train_totalvae_single_node.sh
 bash commands/test_totalvae_single_node.sh
 ```
 
-#### Visualization
+#### Test-set visualization
 
-Testing also visualizes 10 test samples, stratified over the 8 car categories
-(`vis_num_samples` in `configs/finetune_all/MultiTaskTest.yaml`). For each sample it writes to
-`outputs/FinetuneAll/test@<timestamp>/vis/`:
+`bash commands/test_totalvae_single_node.sh` also visualizes 10 test samples, picked so that all 8 car
+categories are covered (settings `vis_num_samples`, `vis_seed`, `vis_octree_depth` in
+`configs/finetune_all/MultiTaskTest.yaml`). For each sample it writes to `outputs/FinetuneAll/test@<timestamp>/vis/`:
 
-- `<uid>.png`: the grey mesh and the surface pressure from five views, for the ground truth (CFD surface),
-  the prediction (reconstructed shape + predicted pressure) and the absolute pressure error;
+- `<uid>.png`: the grey mesh and the surface pressure from five views, in three rows: ground truth on the
+  CFD surface, prediction (shape reconstructed by the SP-VAE + its predicted pressure), and the absolute
+  pressure error on the CFD surface. Same format as the dataset figures in [Visualize a sample](#visualize-a-sample);
 - `<uid>/gt_surface_pressure.vtp` (`p_gt`, `p_pred`, `abs_err`) and `<uid>/pred_shape_pressure.vtp` (`p_pred`), viewable in ParaView;
-- `<uid>/metrics.json` and `summary.csv` (Cd, pressure MAE / relative L2, shape IoU).
+- `<uid>/metrics.json`, plus `summary.csv` and `selected_uids.json` for all visualized samples (Cd, pressure MAE / relative L2, shape IoU).
+
+Visualization needs `pressure/PressureVTK` (for the ground-truth surface) and adds about 1 min per sample.
+To change what is visualized, call the launcher directly:
 
 ```bash
 # visualize only (skip the metrics on the rest of the test set)
 python launch_finetuneall.py --config configs/finetune_all/MultiTaskTest.yaml --task joint --gpu 0 --test --vis_only
 # choose the samples yourself
 python launch_finetuneall.py --config configs/finetune_all/MultiTaskTest.yaml --task joint --gpu 0 --test --vis_uids N_S_WWS_WM_172,F_D_WM_WW_3523
-```
-
-To inspect dataset samples in the same format (ground-truth pressure only; CPU, needs `pressure/PressureVTK`):
-
-```bash
-python vis_dataset_sample.py --uid N_S_WWS_WM_172 F_D_WM_WW_3523 --out_dir outputs/vis_dataset
+# metrics only, no visualization
+python launch_finetuneall.py --config configs/finetune_all/MultiTaskTest.yaml --task joint --gpu 0 --test --vis_num_samples 0
 ```
 
 ---
