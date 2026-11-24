@@ -498,6 +498,8 @@ def save_test_visualization(out_dir: str, uid: str, gt_vtk_path: str,
     |error| on the CFD surface]. Pressures are in dataset units (not normalized)."""
     sample_dir = os.path.join(out_dir, uid)
     os.makedirs(sample_dir, exist_ok=True)
+    as_float = lambda v: None if v is None else float(v)  # numpy / torch scalars -> JSON-safe floats
+    cd_gt, cd_pred, shape_iou = as_float(cd_gt), as_float(cd_pred), as_float(shape_iou)
 
     # The full-resolution pressure cache stores the VTK vertices in their original order,
     # so the VTK triangles index the test points directly; otherwise map by nearest neighbour.
